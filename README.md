@@ -39,7 +39,7 @@ Une application de bureau interactive conçue en **Python** avec **Tkinter** et 
 3-Installer la bibliothèque Pillow :
      ```bash
      
-      Windows (CMD) : env\Scripts\activate 
+      pip install Pillow
 
 4-Exécuter l'application :
 python app.py

@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk, ImageFilter
+import numpy as np
 
 class MiniImageApp:
     def __init__(self, root):
@@ -28,13 +29,35 @@ class MiniImageApp:
         menubar.add_cascade(label="File", menu=file_menu)
         
         # 2ème Menu: Filtres
+        # ============================================================
+        #  SECTION FILTRES - réorganisée en deux catégories :
+        #  Filtres Linéaires / Filtres Non-Linéaires
+        # ============================================================
         filters_menu = tk.Menu(menubar, tearoff=0)
-        filters_menu.add_command(label="Filtre Moyenneur (Flou)", command=self.apply_filter_moyenneur)
-        filters_menu.add_command(label="Filtre Médian", command=self.apply_filter_median)
-        filters_menu.add_command(label="Filtre Nagao (Simulé)", command=self.apply_filter_nagao_dummy)
+
+        # --- Sous-menu : Filtres Linéaires ---
+        linear_filters_menu = tk.Menu(filters_menu, tearoff=0)
+        linear_filters_menu.add_command(label="Filtre Moyenneur (Mean)", command=self.apply_filter_moyenneur)
+        linear_filters_menu.add_command(label="Filtre Gaussien (Gaussian)", command=self.apply_filter_gaussian)
+        linear_filters_menu.add_command(label="Filtre Passe-Haut (High Pass)", command=self.apply_filter_high_pass)
+        linear_filters_menu.add_command(label="Filtre de Butterworth", command=self.apply_filter_butterworth)
+        linear_filters_menu.add_command(label="Filtre de Netteté (Sharpen)", command=self.apply_filter_sharpen)
+        filters_menu.add_cascade(label="Filtres Linéaires", menu=linear_filters_menu)
+
+        filters_menu.add_separator()
+
+        # --- Sous-menu : Filtres Non-Linéaires (logique inchangée) ---
+        non_linear_filters_menu = tk.Menu(filters_menu, tearoff=0)
+        non_linear_filters_menu.add_command(label="Filtre Médian", command=self.apply_filter_median)
+        non_linear_filters_menu.add_command(label="Filtre Nagao (Simulé)", command=self.apply_filter_nagao_dummy)
+        filters_menu.add_cascade(label="Filtres Non-Linéaires", menu=non_linear_filters_menu)
+
         filters_menu.add_separator()
         filters_menu.add_command(label="Tous les filtres", command=self.apply_all_filters)
         menubar.add_cascade(label="Filtres", menu=filters_menu)
+        # ============================================================
+        #  FIN SECTION FILTRES
+        # ============================================================
         
         # 3ème Menu: Contour
         contour_menu = tk.Menu(menubar, tearoff=0)
@@ -117,15 +140,96 @@ class MiniImageApp:
         img_label.image = photo
         img_label.pack(fill=tk.BOTH, expand=True)
 
-    # --- Fonctions de traitement d'images (Exemples pour l'Étape 1) ---
+    
 
     def apply_filter_moyenneur(self):
+        """[Linéaire] Filtre Moyenneur (Mean) - flou de boîte (BoxBlur)."""
         if self.original_pil_image is None:
             messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
             return
-        # Simulation d'un filtre linéaire passe-bas (Moyenneur) avec un flou de boîte (BoxBlur)
         result = self.original_pil_image.filter(ImageFilter.BoxBlur(radius=3))
-        self.display_single_result(result, title="Filtre Moyenneur (Radius = 3)")
+        self.display_single_result(result, title="Filtre Moyenneur / Mean (Radius = 3)")
+
+    def apply_filter_gaussian(self):
+        """[Linéaire] Filtre Gaussien (Gaussian Blur)."""
+        if self.original_pil_image is None:
+            messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
+            return
+        result = self.original_pil_image.filter(ImageFilter.GaussianBlur(radius=2))
+        self.display_single_result(result, title="Filtre Gaussien (Radius = 2)")
+
+    def apply_filter_high_pass(self):
+        """[Linéaire] Filtre Passe-Haut (High Pass) - noyau de convolution 3x3."""
+        if self.original_pil_image is None:
+            messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
+            return
+        result = self._compute_high_pass(self.original_pil_image)
+        self.display_single_result(result, title="Filtre Passe-Haut (High Pass)")
+
+    def apply_filter_butterworth(self):
+        """[Linéaire] Filtre de Butterworth (passe-bas, domaine fréquentiel)."""
+        if self.original_pil_image is None:
+            messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
+            return
+        result = self._compute_butterworth(self.original_pil_image, cutoff=50, order=2)
+        self.display_single_result(result, title="Filtre de Butterworth (D0=50, n=2)")
+
+    def apply_filter_sharpen(self):
+        """[Linéaire] Filtre de Netteté (Sharpen)."""
+        if self.original_pil_image is None:
+            messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
+            return
+        result = self.original_pil_image.filter(ImageFilter.SHARPEN)
+        self.display_single_result(result, title="Filtre de Netteté (Sharpen)")
+
+    def _compute_high_pass(self, pil_image):
+        """Calcule (sans afficher) le résultat du filtre Passe-Haut linéaire.
+        Utilisé à la fois par apply_filter_high_pass() et apply_all_filters()."""
+        kernel = ImageFilter.Kernel(
+            (3, 3),
+            [-1, -1, -1,
+             -1,  8, -1,
+             -1, -1, -1],
+            scale=1,
+            offset=128
+        )
+        return pil_image.filter(kernel)
+
+    def _compute_butterworth(self, pil_image, cutoff=50, order=2):
+        """Calcule (sans afficher) le résultat du filtre de Butterworth linéaire
+        dans le domaine fréquentiel (via FFT). Image traitée en niveaux de gris.
+        Utilisé à la fois par apply_filter_butterworth() et apply_all_filters()."""
+        img_gray = pil_image.convert("L")
+        img_array = np.array(img_gray, dtype=np.float64)
+
+        # Transformée de Fourier
+        f = np.fft.fft2(img_array)
+        fshift = np.fft.fftshift(f)
+
+        rows, cols = img_array.shape
+        crow, ccol = rows // 2, cols // 2
+
+        # Construction du filtre de Butterworth (passe-bas)
+        u = np.arange(rows) - crow
+        v = np.arange(cols) - ccol
+        V, U = np.meshgrid(v, u)
+        D = np.sqrt(U ** 2 + V ** 2)
+
+        H = 1 / (1 + (D / cutoff) ** (2 * order))
+
+        # Application du filtre puis transformée inverse
+        fshift_filtered = fshift * H
+        f_ishift = np.fft.ifftshift(fshift_filtered)
+        img_back = np.fft.ifft2(f_ishift)
+        img_back = np.abs(img_back)
+        img_back = np.clip(img_back, 0, 255).astype(np.uint8)
+
+        return Image.fromarray(img_back)
+
+    # ----------------------------------------------------------------
+    # --------------------- FILTRES NON-LINÉAIRES ---------------------
+    # --------------------- (logique strictement inchangée) -----------
+    # ----------------------------------------------------------------
 
     def apply_filter_median(self):
         if self.original_pil_image is None:
@@ -144,6 +248,11 @@ class MiniImageApp:
         result = self.original_pil_image.filter(ImageFilter.SMOOTH_MORE)
         self.display_single_result(result, title="Filtre de Nagao (Simulation - Smooth)")
 
+    # ----------------------------------------------------------------
+    # --------------------------- CONTOUR -----------------------------
+    # ----------------------------------------------------------------
+    # (Hors section Filtres - laissé totalement inchangé)
+
     def apply_contour_simple(self):
         if self.original_pil_image is None:
             messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
@@ -152,30 +261,43 @@ class MiniImageApp:
         result = self.original_pil_image.convert("L").filter(ImageFilter.FIND_EDGES)
         self.display_single_result(result, title="Contours Détectés (Simple)")
 
+    # ----------------------------------------------------------------
+    # ------------------------ TOUS LES FILTRES ------------------------
+    # ----------------------------------------------------------------
+
     def apply_all_filters(self):
-        """Affiche les résultats de plusieurs filtres côte à côte dans la zone droite."""
+        """Affiche les résultats de tous les filtres (Linéaires + Non-Linéaires)
+        côte à côte dans la zone droite, regroupés par catégorie."""
         if self.original_pil_image is None:
             messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
             return
         
         self.clear_results_area()
         
-        # Création d'une grille 2x2 dans la zone de droite pour présenter les filtres
+        # Création d'une grille dans la zone de droite pour présenter les filtres
         grid_frame = tk.Frame(self.results_container, bg="white")
         grid_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Liste des filtres à appliquer pour la démonstration globale
+        # Liste des filtres à appliquer pour la démonstration globale,
+        # regroupés par catégorie : Linéaires puis Non-Linéaires
         filters_to_run = [
-            ("Moyenneur", self.original_pil_image.filter(ImageFilter.BoxBlur(radius=3))),
-            ("Médian", self.original_pil_image.filter(ImageFilter.MedianFilter(size=3))),
-            ("Nagao (Simulé)", self.original_pil_image.filter(ImageFilter.SMOOTH_MORE)),
-            ("Contour", self.original_pil_image.convert("L").filter(ImageFilter.FIND_EDGES))
+            # --- Filtres Linéaires ---
+            ("Moyenneur / Mean (Linéaire)", self.original_pil_image.filter(ImageFilter.BoxBlur(radius=3))),
+            ("Gaussien (Linéaire)", self.original_pil_image.filter(ImageFilter.GaussianBlur(radius=2))),
+            ("Passe-Haut (Linéaire)", self._compute_high_pass(self.original_pil_image)),
+            ("Butterworth (Linéaire)", self._compute_butterworth(self.original_pil_image, cutoff=50, order=2)),
+            ("Netteté / Sharpen (Linéaire)", self.original_pil_image.filter(ImageFilter.SHARPEN)),
+            # --- Filtres Non-Linéaires (logique inchangée) ---
+            ("Médian (Non-Linéaire)", self.original_pil_image.filter(ImageFilter.MedianFilter(size=3))),
+            ("Nagao Simulé (Non-Linéaire)", self.original_pil_image.filter(ImageFilter.SMOOTH_MORE)),
         ]
         
-        # Génération des vignettes
+        # Génération des vignettes - grille à 4 colonnes pour accueillir
+        # l'ensemble des filtres Linéaires + Non-Linéaires
+        num_cols = 4
         for index, (title, img) in enumerate(filters_to_run):
-            row = index // 2
-            col = index % 2
+            row = index // num_cols
+            col = index % num_cols
             
             cell = tk.Frame(grid_frame, bd=1, relief=tk.RIDGE, bg="white")
             cell.grid(row=row, column=col, sticky="nsew", padx=5, pady=5)
@@ -185,18 +307,23 @@ class MiniImageApp:
             
             # Ajustement de taille plus petite pour la grille
             thumb = img.copy()
-            thumb.thumbnail((180, 180))
+            thumb.thumbnail((150, 150))
             photo = ImageTk.PhotoImage(thumb)
             
             lbl_img = tk.Label(cell, image=photo, bg="white")
             lbl_img.image = photo  # conserver la référence
             lbl_img.pack(fill=tk.BOTH, expand=True)
-            
+        
         # Configurer la grille pour qu'elle s'étende uniformément
-        grid_frame.rowconfigure(0, weight=1)
-        grid_frame.rowconfigure(1, weight=1)
-        grid_frame.columnconfigure(0, weight=1)
-        grid_frame.columnconfigure(1, weight=1)
+        num_rows = (len(filters_to_run) + num_cols - 1) // num_cols
+        for r in range(num_rows):
+            grid_frame.rowconfigure(r, weight=1)
+        for c in range(num_cols):
+            grid_frame.columnconfigure(c, weight=1)
+
+    # ================================================================
+    # ====================  FIN SECTION FILTRES  ====================
+    # ================================================================
 
 if __name__ == "__main__":
     root = tk.Tk()

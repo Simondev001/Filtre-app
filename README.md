@@ -21,7 +21,7 @@ Une application de bureau interactive conçue en **Python** avec **Tkinter** et 
 
 1. **Cloner ou télécharger le projet** :
    ```bash
-   git clone <url-du-depot>
+   git clone https://github.com/Simondev001/Filtre-app.git
    cd <nom-du-dossier>
 
 

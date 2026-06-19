@@ -68,7 +68,11 @@ class MiniImageApp:
         # ============================================================
         #  FIN SECTION FILTRES
         # ============================================================
+        # 3ème Menu: Contour
 
+        contour_menu = tk.Menu(menubar, tearoff=0)
+        # contour_menu.add_command(label="Détection de Contours (Simple)", command=self.apply_contour_simple)
+        menubar.add_cascade(label="Contour", menu=contour_menu)
         self.root.config(menu=menubar)
 
     def create_layout(self):

@@ -46,11 +46,21 @@ class MiniImageApp:
 
         filters_menu.add_separator()
 
-        # --- Sous-menu : Filtres Non-Linéaires (logique inchangée) ---
+        # --- Sous-menu : Filtres Non-Linéaires ---
+        # ============================================================
+        #  FILTRES NON-LINÉAIRES RETENUS (validés avec le professeur) :
+        #  Médian, Nagao, Min-Max, Érosion, Ouverture (Opening)
+        # ============================================================
         non_linear_filters_menu = tk.Menu(filters_menu, tearoff=0)
         non_linear_filters_menu.add_command(label="Filtre Médian", command=self.apply_filter_median)
         non_linear_filters_menu.add_command(label="Filtre Nagao (Simulé)", command=self.apply_filter_nagao_dummy)
+        non_linear_filters_menu.add_command(label="Filtre Min-Max", command=self.apply_filter_min_max)
+        non_linear_filters_menu.add_command(label="Érosion", command=self.apply_filter_erosion)
+        non_linear_filters_menu.add_command(label="Ouverture (Opening)", command=self.apply_filter_opening)
         filters_menu.add_cascade(label="Filtres Non-Linéaires", menu=non_linear_filters_menu)
+        # ============================================================
+        #  FIN SOUS-MENU FILTRES NON-LINÉAIRES
+        # ============================================================
 
         filters_menu.add_separator()
         filters_menu.add_command(label="Tous les filtres", command=self.apply_all_filters)
@@ -58,26 +68,26 @@ class MiniImageApp:
         # ============================================================
         #  FIN SECTION FILTRES
         # ============================================================
-        
         # 3ème Menu: Contour
+
         contour_menu = tk.Menu(menubar, tearoff=0)
-        contour_menu.add_command(label="Détection de Contours (Simple)", command=self.apply_contour_simple)
+        # contour_menu.add_command(label="Détection de Contours (Simple)", command=self.apply_contour_simple)
         menubar.add_cascade(label="Contour", menu=contour_menu)
-        
         self.root.config(menu=menubar)
 
     def create_layout(self):
-        """Organise l'interface en deux zones principales : Image originale et Résultats."""
-        main_frame = tk.Frame(self.root, bg="#f0f0f0")
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Zone Gauche : Image Originale
+        """Crée la disposition principale de la fenêtre : zone gauche (image
+        originale) et zone droite (résultats des filtres)."""
+        main_frame = tk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Zone Gauche : Image originale
         self.left_frame = tk.LabelFrame(main_frame, text="Image Originale", labelanchor="n", font=("Arial", 12, "bold"))
         self.left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
+
         self.label_original = tk.Label(self.left_frame, text="Aucune image chargée", bg="white")
         self.label_original.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
+
         # Zone Droite : Résultats
         self.right_frame = tk.LabelFrame(main_frame, text="Résultats", labelanchor="n", font=("Arial", 12, "bold"))
         self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -139,6 +149,45 @@ class MiniImageApp:
         img_label = tk.Label(result_box, image=photo, bg="white")
         img_label.image = photo
         img_label.pack(fill=tk.BOTH, expand=True)
+
+    # ============================================================
+    #  NOUVELLE MÉTHODE : affichage de DEUX résultats côte à côte
+    #  (utilisée par le Filtre Min-Max, qui doit comparer le résultat
+    #  du Filtre Minimum et celui du Filtre Maximum sur la même image)
+    # ============================================================
+    def display_two_results(self, img1, title1, img2, title2, main_title="Résultat"):
+        """Affiche deux images de résultat côte à côte dans la zone de droite,
+        chacune avec son propre sous-titre, sous un titre principal commun."""
+        self.clear_results_area()
+
+        # Titre principal (ex: "Filtre Min-Max")
+        main_title_label = tk.Label(self.results_container, text=main_title,
+                                     font=("Arial", 10, "italic"), bg="white")
+        main_title_label.pack(pady=5)
+
+        # Conteneur horizontal pour placer les deux images l'une à côté de l'autre
+        pair_frame = tk.Frame(self.results_container, bg="white")
+        pair_frame.pack(fill=tk.BOTH, expand=True)
+
+        for img, sub_title in [(img1, title1), (img2, title2)]:
+            cell = tk.Frame(pair_frame, bg="white")
+            cell.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+
+            lbl_title = tk.Label(cell, text=sub_title, font=("Arial", 9, "bold"), bg="white")
+            lbl_title.pack(pady=3)
+
+            # Redimensionnement temporaire pour l'affichage (chaque vignette
+            # prend la moitié de l'espace disponible, donc taille réduite)
+            preview = img.copy()
+            preview.thumbnail((self.display_size[0] // 2, self.display_size[1] // 2))
+            photo = ImageTk.PhotoImage(preview)
+
+            img_label = tk.Label(cell, image=photo, bg="white")
+            img_label.image = photo  # conserver la référence (sinon le garbage collector l'efface)
+            img_label.pack(fill=tk.BOTH, expand=True)
+    # ============================================================
+    #  FIN NOUVELLE MÉTHODE display_two_results
+    # ============================================================
 
     
 
@@ -228,7 +277,6 @@ class MiniImageApp:
 
     # ----------------------------------------------------------------
     # --------------------- FILTRES NON-LINÉAIRES ---------------------
-    # --------------------- (logique strictement inchangée) -----------
     # ----------------------------------------------------------------
 
     def apply_filter_median(self):
@@ -248,23 +296,99 @@ class MiniImageApp:
         result = self.original_pil_image.filter(ImageFilter.SMOOTH_MORE)
         self.display_single_result(result, title="Filtre de Nagao (Simulation - Smooth)")
 
-    # ----------------------------------------------------------------
-    # --------------------------- CONTOUR -----------------------------
-    # ----------------------------------------------------------------
-    # (Hors section Filtres - laissé totalement inchangé)
+    # ============================================================
+    #  FILTRES NON-LINÉAIRES RETENUS (validés avec le professeur) :
+    #  Filtre Min-Max, Érosion, Ouverture (Opening)
+    # ============================================================
 
-    def apply_contour_simple(self):
+    def _compute_erosion(self, pil_image, size=3):
+        """Calcule (sans afficher) l'érosion morphologique en niveaux de gris.
+
+        Principe : on fait glisser un élément structurant (ici un carré de
+        taille `size`x`size`) sur l'image, et on remplace chaque pixel par
+        la valeur MINIMALE des pixels couverts par cet élément structurant.
+        -> Effet : les zones claires "rétrécissent", les zones sombres
+        "s'étendent" ; les petits détails clairs/le bruit ponctuel disparaissent.
+
+        Remarque : l'érosion en niveaux de gris avec un élément structurant
+        carré est mathématiquement équivalente à un Filtre Minimum local,
+        d'où l'utilisation de ImageFilter.MinFilter ci-dessous.
+        Utilisée par apply_filter_erosion() et apply_filter_opening()."""
+        return pil_image.filter(ImageFilter.MinFilter(size=size))
+
+    def _compute_dilation(self, pil_image, size=3):
+        """Calcule (sans afficher) la dilatation morphologique en niveaux de gris.
+
+        Principe : opération duale de l'érosion : on remplace chaque pixel
+        par la valeur MAXIMALE des pixels couverts par l'élément structurant.
+        -> Effet : les zones claires "s'étendent", les zones sombres "rétrécissent".
+
+        Équivalente à un Filtre Maximum local (ImageFilter.MaxFilter).
+        Utilisée ici uniquement comme brique pour construire l'Ouverture
+        (Opening = Érosion puis Dilatation) dans apply_filter_opening()."""
+        return pil_image.filter(ImageFilter.MaxFilter(size=size))
+
+    def apply_filter_min_max(self):
+        """[Non-Linéaire] Filtre Min-Max.
+
+        Ce "filtre" regroupe en fait les deux filtres d'ordre statistique de
+        base (Min et Max), affichés ici côte à côte pour bien visualiser
+        leur effet opposé sur l'image :
+          - Filtre MIN : chaque pixel <- minimum de son voisinage
+                          (assombrit l'image, base de l'Érosion)
+          - Filtre MAX : chaque pixel <- maximum de son voisinage
+                          (éclaircit l'image, base de la Dilatation)
+        Ces deux filtres servent de fondation aux opérations morphologiques
+        Érosion / Ouverture définies plus bas."""
         if self.original_pil_image is None:
             messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
             return
-        # Extraction de contour de base avec Pillow
-        result = self.original_pil_image.convert("L").filter(ImageFilter.FIND_EDGES)
-        self.display_single_result(result, title="Contours Détectés (Simple)")
 
-    # ----------------------------------------------------------------
-    # ------------------------ TOUS LES FILTRES ------------------------
-    # ----------------------------------------------------------------
+        # Calcul du Filtre Minimum (voisinage 3x3)
+        min_result = self.original_pil_image.filter(ImageFilter.MinFilter(size=3))
+        # Calcul du Filtre Maximum (voisinage 3x3)
+        max_result = self.original_pil_image.filter(ImageFilter.MaxFilter(size=3))
 
+        # Affichage côte à côte des deux résultats pour comparaison directe
+        self.display_two_results(
+            min_result, "Min (Size = 3)",
+            max_result, "Max (Size = 3)",
+            main_title="Filtre Min-Max"
+        )
+
+    def apply_filter_erosion(self):
+        """[Non-Linéaire] Érosion morphologique (en niveaux de gris).
+
+        Utilise _compute_erosion() : remplace chaque pixel par le minimum
+        de son voisinage 3x3. Réduit les zones claires et élimine les petits
+        détails clairs / le bruit ponctuel."""
+        if self.original_pil_image is None:
+            messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
+            return
+        result = self._compute_erosion(self.original_pil_image, size=3)
+        self.display_single_result(result, title="Érosion Morphologique (Size = 3)")
+
+    def apply_filter_opening(self):
+        """[Non-Linéaire] Ouverture (Opening).
+
+        Définition : Ouverture = Dilatation( Érosion( image ) )
+        c'est-à-dire qu'on applique d'abord une Érosion, puis une Dilatation
+        sur le résultat obtenu.
+
+        Effet : supprime les petits détails clairs isolés et le bruit
+        ponctuel (comme l'érosion seule), tout en restaurant ensuite la
+        taille globale des objets restants grâce à la dilatation qui suit
+        (contrairement à l'érosion seule, qui rétrécit tout durablement)."""
+        if self.original_pil_image is None:
+            messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
+            return
+        # Étape 1 : Érosion de l'image originale
+        eroded = self._compute_erosion(self.original_pil_image, size=3)
+        # Étape 2 : Dilatation appliquée sur le résultat de l'érosion
+        result = self._compute_dilation(eroded, size=3)
+        self.display_single_result(result, title="Ouverture / Opening (Érosion + Dilatation, Size = 3)")
+
+   
     def apply_all_filters(self):
         """Affiche les résultats de tous les filtres (Linéaires + Non-Linéaires)
         côte à côte dans la zone droite, regroupés par catégorie."""
@@ -287,9 +411,16 @@ class MiniImageApp:
             ("Passe-Haut (Linéaire)", self._compute_high_pass(self.original_pil_image)),
             ("Butterworth (Linéaire)", self._compute_butterworth(self.original_pil_image, cutoff=50, order=2)),
             ("Netteté / Sharpen (Linéaire)", self.original_pil_image.filter(ImageFilter.SHARPEN)),
-            # --- Filtres Non-Linéaires (logique inchangée) ---
+            # --- Filtres Non-Linéaires ---
             ("Médian (Non-Linéaire)", self.original_pil_image.filter(ImageFilter.MedianFilter(size=3))),
             ("Nagao Simulé (Non-Linéaire)", self.original_pil_image.filter(ImageFilter.SMOOTH_MORE)),
+            # --- Filtre Min-Max : on affiche ici les deux composantes (Min et Max) ---
+            ("Min (Non-Linéaire)", self.original_pil_image.filter(ImageFilter.MinFilter(size=3))),
+            ("Max (Non-Linéaire)", self.original_pil_image.filter(ImageFilter.MaxFilter(size=3))),
+            # --- Érosion et Ouverture (Opening = Érosion puis Dilatation) ---
+            ("Érosion (Non-Linéaire)", self._compute_erosion(self.original_pil_image, size=3)),
+            ("Ouverture / Opening (Non-Linéaire)", self._compute_dilation(
+                self._compute_erosion(self.original_pil_image, size=3), size=3)),
         ]
         
         # Génération des vignettes - grille à 4 colonnes pour accueillir

@@ -68,11 +68,22 @@ class MiniImageApp:
         # ============================================================
         #  FIN SECTION FILTRES
         # ============================================================
-        # 3ème Menu: Contour
 
+        # ============================================================
+        # 3ème Menu: Contour
+        # ============================================================
         contour_menu = tk.Menu(menubar, tearoff=0)
-        # contour_menu.add_command(label="Détection de Contours (Simple)", command=self.apply_contour_simple)
+        contour_menu.add_command(label="Gradient de Sobel", command=self.apply_contour_sobel)
+        contour_menu.add_command(label="Gradient de Prewitt", command=self.apply_contour_prewitt)
+        contour_menu.add_command(label="Gradient de Scharr", command=self.apply_contour_scharr)
+        contour_menu.add_command(label="Filtre Laplacien", command=self.apply_contour_laplacian)
+        
+        # Séparateur et option globale
+        contour_menu.add_separator()
+        contour_menu.add_command(label="Tous les contours", command=self.apply_all_contours)
+        
         menubar.add_cascade(label="Contour", menu=contour_menu)
+        # ============================================================
         self.root.config(menu=menubar)
 
     def create_layout(self):
@@ -455,6 +466,134 @@ class MiniImageApp:
     # ================================================================
     # ====================  FIN SECTION FILTRES  ====================
     # ================================================================
+
+    # ========================================================================
+    # ARCHITECTURE TECHNIQUE DU BLOC CONTOUR
+    # ========================================================================
+    
+    def _execute_spatial_gradient(self, kernel_x, kernel_y):
+        """
+        Calcule de manière stable la magnitude du gradient spatial.
+        Convertit en niveaux de gris et gère le typage d'image pour éviter les overflows.
+        """
+        if self.original_pil_image is None:
+            messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
+            return None
+        
+        # Étape 1 : Isolation du canal de luminance (Niveaux de gris)
+        gray_img = self.original_pil_image.convert("L")
+        
+        # Étape 2 : Création des masques de convolution Pillow structurels
+        filter_x = ImageFilter.Kernel((3, 3), kernel_x.flatten(), scale=1, offset=0)
+        filter_y = ImageFilter.Kernel((3, 3), kernel_y.flatten(), scale=1, offset=0)
+        
+        # Étape 3 : Application des filtres et conversion immédiate en float64 pour le calcul vectoriel
+        grad_x = np.array(gray_img.filter(filter_x), dtype=np.float64)
+        grad_y = np.array(gray_img.filter(filter_y), dtype=np.float64)
+        
+        # Étape 4 : Calcul de la norme euclidienne du gradient G = sqrt(Gx² + Gy²)
+        magnitude = np.sqrt(grad_x**2 + grad_y**2)
+        
+        # Étape 5 : Saturation des valeurs hors limites [0, 255] et conversion en entiers non-signés 8-bits
+        clean_array = np.clip(magnitude, 0, 255).astype(np.uint8)
+        
+        return Image.fromarray(clean_array)
+
+    def apply_contour_sobel(self):
+        """Applique l'opérateur de Sobel (pondération centrale à 2)."""
+        kx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float64)
+        ky = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=np.float64)
+        result = self._execute_spatial_gradient(kx, ky)
+        if result:
+            self.display_single_result(result, title="Contours : Gradient de Sobel (3x3)")
+
+    def apply_contour_prewitt(self):
+        """Applique l'opérateur de Prewitt (uniforme sans pondération)."""
+        kx = np.array([[-1, 0, 1], [-1, 0, 1], [-1, 0, 1]], dtype=np.float64)
+        ky = np.array([[-1, -1, -1], [0, 0, 0], [1, 1, 1]], dtype=np.float64)
+        result = self._execute_spatial_gradient(kx, ky)
+        if result:
+            self.display_single_result(result, title="Contours : Gradient de Prewitt (3x3)")
+
+    def apply_contour_scharr(self):
+        """Applique l'opérateur de Scharr (optimisé pour la directivité diagonale)."""
+        kx = np.array([[-3, 0, 3], [-10, 0, 10], [-3, 0, 3]], dtype=np.float64)
+        ky = np.array([[-3, -10, -3], [0, 0, 0], [3, 10, 3]], dtype=np.float64)
+        result = self._execute_spatial_gradient(kx, ky)
+        if result:
+            self.display_single_result(result, title="Contours : Gradient de Scharr (3x3)")
+
+    def apply_contour_laplacian(self):
+        """Applique le Laplacien (Opérateur isotrope du second ordre)."""
+        if self.original_pil_image is None:
+            messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
+            return
+        
+        gray_img = self.original_pil_image.convert("L")
+        # Noyau discret standardisé à forte réponse centrale
+        kernel_lap = np.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=np.float64)
+        lap_filter = ImageFilter.Kernel((3, 3), kernel_lap.flatten(), scale=1, offset=0)
+        
+        result = gray_img.filter(lap_filter)
+        self.display_single_result(result, title="Contours : Filtre Laplacien Isotropique")
+
+    def apply_all_contours(self):
+        """
+        Génère dynamiquement une matrice d'affichage 2x2 dédiée à l'analyse 
+        comparative directe de tous les extracteurs de contours.
+        """
+        if self.original_pil_image is None:
+            messagebox.showwarning("Attention", "Veuillez d'abord charger une image.")
+            return
+        
+        self.clear_results_area()
+        
+        # Conteneur principal de la grille
+        grid_frame = tk.Frame(self.results_container, bg="white")
+        grid_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Génération des matrices de noyaux pour calcul instantané local
+        kx_sobel, ky_sobel = np.array([[-1,0,1],[-2,0,2],[-1,0,1]]), np.array([[-1,-2,-1],[0,0,0],[1,2,1]])
+        kx_prew, ky_prew = np.array([[-1,0,1],[-1,0,1],[-1,0,1]]), np.array([[-1,-1,-1],[0,0,0],[1,1,1]])
+        kx_schar, ky_schar = np.array([[-3,0,3],[-10,0,10],[-3,0,3]]), np.array([[-3,-10,-3],[0,0,0],[3,10,3]])
+        
+        # Liste structurelle des jeux de données d'affichage
+        contours_list = [
+            ("Gradient de Sobel", self._execute_spatial_gradient(kx_sobel, ky_sobel)),
+            ("Gradient de Prewitt", self._execute_spatial_gradient(kx_prew, ky_prew)),
+            ("Gradient de Scharr", self._execute_spatial_gradient(kx_schar, ky_schar)),
+            ("Filtre Laplacien", self.original_pil_image.convert("L").filter(
+                ImageFilter.Kernel((3,3), [0,1,0,1,-4,1,0,1,0], 1, 0)))
+        ]
+        
+        # Construction géométrique de la table Tkinter (2 lignes x 2 colonnes)
+        num_cols = 2
+        for index, (title, img) in enumerate(contours_list):
+            if img is None: continue
+            
+            row = index // num_cols
+            col = index % num_cols
+            
+            # Module de cellule isolée
+            cell = tk.Frame(grid_frame, bd=1, relief=tk.RIDGE, bg="white")
+            cell.grid(row=row, column=col, sticky="nsew", padx=6, pady=6)
+            
+            lbl_title = tk.Label(cell, text=title, font=("Arial", 9, "bold"), bg="white")
+            lbl_title.pack(anchor="n", pady=2)
+            
+            # Redimensionnement sécurisé pour la grille comparative
+            thumb = img.copy()
+            thumb.thumbnail((180, 180))
+            photo = ImageTk.PhotoImage(thumb)
+            
+            lbl_img = tk.Label(cell, image=photo, bg="white")
+            lbl_img.image = photo  # Sauvegarde impérative de la référence mémoire (Évite le Garbage Collector)
+            lbl_img.pack(fill=tk.BOTH, expand=True)
+            
+        # Forçage du comportement élastique de la grille Tkinter
+        for i in range(2):
+            grid_frame.rowconfigure(i, weight=1)
+            grid_frame.columnconfigure(i, weight=1)
 
 if __name__ == "__main__":
     root = tk.Tk()
